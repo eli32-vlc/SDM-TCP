@@ -1,5 +1,8 @@
 # SDM-TCP - Software Defined Modem
 
+[![Build Status](https://github.com/eli32-vlc/SDM-TCP/workflows/Build%20SDM-TCP/badge.svg)](https://github.com/eli32-vlc/SDM-TCP/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A cross-platform software-defined modem that transmits data over audio channels with support for Android and macOS.
 
 ## Features
@@ -8,9 +11,20 @@ A cross-platform software-defined modem that transmits data over audio channels 
 - **ACKs and Retries**: Reliable packet delivery with automatic retransmission
 - **VOIP Support**: Optimized for voice with compression and reliability
 - **SOCKS5 Proxy**: Long-lived proxy connections for TX mode
-- **Cross-Platform**: Supports both Android and macOS
+- **Cross-Platform**: Supports both Android and macOS (desktop version works on all platforms)
+- **Material-UI**: Modern, responsive interface
 
-## Architecture
+## Quick Start
+
+```bash
+# Build core library
+cd core && npm install && npm run build
+
+# Build and run desktop app
+cd ../macos && npm install && npm run dev
+```
+
+See [Quick Start Guide](docs/QUICKSTART.md) for detailed instructions.
 
 ### RX Mode (Receive)
 - Captures audio through microphone

@@ -13,9 +13,7 @@
   "keywords": ["modem", "audio", "fsk", "socks5"],
   "author": "",
   "license": "MIT",
-  "dependencies": {
-    "fsk-demod": "^1.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",

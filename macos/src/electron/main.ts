@@ -1,8 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import { SOCKS5Proxy } from '../../core/src/socks5/proxy';
-import { ReliableTransport } from '../../core/src/protocol/transport';
-import { FSKModulator } from '../../core/src/audio/fsk';
+import { SOCKS5Proxy, ReliableTransport, FSKModulator } from 'sdm-tcp-core';
 
 let mainWindow: BrowserWindow | null = null;
 let proxy: SOCKS5Proxy | null = null;
@@ -66,7 +64,7 @@ ipcMain.handle('start-tx-mode', async (event, config) => {
         }));
 
         // Send via transport
-        await transport!.sendData(data, async (packet) => {
+        await transport!.sendData(data, async (packet: Buffer) => {
           // Modulate and play audio
           const samples = modulator!.modulate(packet);
           mainWindow?.webContents.send('play-audio', Array.from(samples));
@@ -106,7 +104,7 @@ ipcMain.handle('start-rx-mode', async (event, config) => {
     transport = new ReliableTransport(password);
 
     // Set up receive callback
-    transport.onReceive((data) => {
+    transport.onReceive((data: Buffer) => {
       // Forward decrypted data
       mainWindow?.webContents.send('data-received', data.toString('base64'));
     });
@@ -138,7 +136,7 @@ ipcMain.handle('process-audio', async (event, samples: number[]) => {
     const packet = modulator.demodulate(audioData);
 
     // Handle with transport layer
-    transport.handleReceivedPacket(packet, async (ackPacket) => {
+    transport.handleReceivedPacket(packet, async (ackPacket: Buffer) => {
       // Send ACK via audio
       const ackSamples = modulator!.modulate(ackPacket);
       mainWindow?.webContents.send('play-audio', Array.from(ackSamples));

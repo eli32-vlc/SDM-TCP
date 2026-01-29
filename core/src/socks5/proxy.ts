@@ -140,9 +140,9 @@ export class SOCKS5Proxy extends EventEmitter {
     const password = await this.readBytes(socket, passwordLen);
     if (!password) return false;
 
-    const isValid = this.auth &&
+    const isValid = !!(this.auth &&
       username.toString() === this.auth.username &&
-      password.toString() === this.auth.password;
+      password.toString() === this.auth.password);
 
     socket.write(Buffer.from([0x01, isValid ? 0x00 : 0x01]));
     return isValid;
