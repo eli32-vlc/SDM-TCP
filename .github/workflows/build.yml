@@ -104,13 +104,11 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
     
-    - name: Install core dependencies
-      working-directory: ./core
-      run: npm install
-    
-    - name: Build core
-      working-directory: ./core
-      run: npm run build
+    - name: Download core build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: core-dist
+        path: core/dist/
     
     - name: Install Android dependencies
       working-directory: ./android
@@ -118,22 +116,19 @@ jobs:
     
     - name: Validate Android structure
       run: |
-        if [ -f "android/README.md" ]; then
-          echo "✓ Android README exists"
-        fi
-        if [ -f "android/package.json" ]; then
-          echo "✓ Android package.json exists"
-        fi
-        if [ -d "core/dist" ]; then
-          echo "✓ Core library built successfully"
-        fi
+        echo "Validating Android project structure..."
+        test -f "android/README.md" && echo "✓ Android README exists" || { echo "✗ Android README missing"; exit 1; }
+        test -f "android/package.json" && echo "✓ Android package.json exists" || { echo "✗ Android package.json missing"; exit 1; }
+        test -d "core/dist" && echo "✓ Core library available" || { echo "✗ Core library missing"; exit 1; }
+        echo "All validation checks passed!"
     
     - name: Upload Android build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: android-build
         path: |
-          android/
+          android/package.json
+          android/README.md
           core/dist/
       if: success() || failure()
 
