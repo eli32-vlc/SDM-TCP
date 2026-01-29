@@ -110,10 +110,6 @@ jobs:
         name: core-dist
         path: core/dist/
     
-    - name: Install Android dependencies
-      working-directory: ./android
-      run: npm install
-    
     - name: Validate Android structure
       run: |
         echo "Validating Android project structure..."
@@ -130,7 +126,7 @@ jobs:
           android/package.json
           android/README.md
           core/dist/
-      if: success() || failure()
+      if: success()
 
   lint-and-check:
     name: Lint and Security Check
