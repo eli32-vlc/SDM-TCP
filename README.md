@@ -11,6 +11,7 @@ A cross-platform software-defined modem that transmits data over audio channels 
 - **ACKs and Retries**: Reliable packet delivery with automatic retransmission
 - **VOIP Support**: Optimized for voice with compression and reliability
 - **SOCKS5 Proxy**: Long-lived proxy connections for TX mode
+- **Bidirectional Mode**: Full-duplex 2-way communication (TX + RX simultaneously)
 - **Cross-Platform**: Supports both Android and macOS (desktop version works on all platforms)
 - **Material-UI**: Modern, responsive interface
 
@@ -26,6 +27,8 @@ cd ../macos && npm install && npm run dev
 
 See [Quick Start Guide](docs/QUICKSTART.md) for detailed instructions.
 
+## Operation Modes
+
 ### RX Mode (Receive)
 - Captures audio through microphone
 - Decodes and demodulates audio signal
@@ -37,6 +40,13 @@ See [Quick Start Guide](docs/QUICKSTART.md) for detailed instructions.
 - Encrypts and encodes data
 - Modulates and transmits through speaker
 - Maintains long-lived connections
+
+### Bidirectional Mode (2-Way) **NEW**
+- **Both TX and RX simultaneously** for true TCP-like operation
+- SOCKS5 proxy for outgoing connections
+- Audio RX for incoming data
+- Full-duplex communication over single audio channel
+- Ideal for interactive applications requiring 2-way communication
 
 ## Project Structure
 
