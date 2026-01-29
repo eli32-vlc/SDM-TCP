@@ -104,14 +104,38 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
     
-    - name: Android placeholder
-      run: echo "Android build placeholder - full React Native setup required"
+    - name: Install core dependencies
+      working-directory: ./core
+      run: npm install
+    
+    - name: Build core
+      working-directory: ./core
+      run: npm run build
+    
+    - name: Install Android dependencies
+      working-directory: ./android
+      run: npm install
     
     - name: Validate Android structure
       run: |
         if [ -f "android/README.md" ]; then
-          echo "Android README exists"
+          echo "✓ Android README exists"
         fi
+        if [ -f "android/package.json" ]; then
+          echo "✓ Android package.json exists"
+        fi
+        if [ -d "core/dist" ]; then
+          echo "✓ Core library built successfully"
+        fi
+    
+    - name: Upload Android build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-build
+        path: |
+          android/
+          core/dist/
+      if: success() || failure()
 
   lint-and-check:
     name: Lint and Security Check
