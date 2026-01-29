@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+release/
+*.log
+*.tgz
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Electron
+out/
+
+# Environment
+.env
+.env.local
+
+# Testing
+coverage/
+
+# Temporary files
+/tmp/
+*.tmp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Android
+*.apk
+*.aab
+*.dex
+local.properties
+.gradle/
+captures/
+
+# React Native
+*.jsbundle
+
+# Logs
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
