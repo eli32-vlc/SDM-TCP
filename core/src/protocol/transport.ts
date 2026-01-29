@@ -17,6 +17,7 @@ export class ReliableTransport {
   private windowSize: number;
   private pendingAcks: Map<number, { packet: Packet; retries: number; timestamp: number }>;
   private receivedSeqs: Set<number>;
+  private maxReceivedSeqs: number = 1000; // Limit memory usage
   private onPacketReceived?: (data: Buffer) => void;
 
   constructor(password: string, options: ReliableTransportOptions = {}) {
@@ -118,6 +119,12 @@ export class ReliableTransport {
         }
         
         this.receivedSeqs.add(packet.sequenceNumber);
+        
+        // Limit memory usage by removing old sequence numbers
+        if (this.receivedSeqs.size > this.maxReceivedSeqs) {
+          const oldestSeq = Math.min(...Array.from(this.receivedSeqs));
+          this.receivedSeqs.delete(oldestSeq);
+        }
         
         // Decrypt and forward
         if (this.onPacketReceived) {

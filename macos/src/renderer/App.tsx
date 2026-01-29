@@ -21,6 +21,7 @@ import {
   Stop,
   Settings,
   SignalCellularAlt,
+  SwapHoriz,
 } from '@mui/icons-material';
 
 declare global {
@@ -30,14 +31,17 @@ declare global {
       stopTxMode: () => Promise<any>;
       startRxMode: (config: { password: string }) => Promise<any>;
       stopRxMode: () => Promise<any>;
+      startBidirectionalMode: (config: { port: number; password: string }) => Promise<any>;
+      stopBidirectionalMode: () => Promise<any>;
       processAudio: (samples: number[]) => Promise<any>;
+      processAudioBidirectional: (samples: number[]) => Promise<any>;
       onPlayAudio: (callback: (samples: number[]) => void) => void;
       onDataReceived: (callback: (data: string) => void) => void;
     };
   }
 }
 
-type Mode = 'tx' | 'rx' | null;
+type Mode = 'tx' | 'rx' | 'bidirectional' | null;
 
 export default function App() {
   const [mode, setMode] = useState<Mode>(null);
@@ -45,28 +49,31 @@ export default function App() {
   const [port, setPort] = useState('1080');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
-  const [dataRate, setDataRate] = useState(0);
   const [packetsReceived, setPacketsReceived] = useState(0);
   const [packetsSent, setPacketsSent] = useState(0);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Set up audio context
     audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     
     // Listen for audio playback
-    window.electronAPI.onPlayAudio((samples: number[]) => {
+    const handlePlayAudio = (samples: number[]) => {
       playAudioSamples(samples);
-    });
-
+    };
+    
     // Listen for received data
-    window.electronAPI.onDataReceived((data: string) => {
+    const handleDataReceived = (data: string) => {
       setPacketsReceived(prev => prev + 1);
       console.log('Data received:', data);
-    });
+    };
+    
+    window.electronAPI.onPlayAudio(handlePlayAudio);
+    window.electronAPI.onDataReceived(handleDataReceived);
 
     return () => {
       if (audioContextRef.current) {
@@ -75,6 +82,7 @@ export default function App() {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       }
+      // Note: Electron IPC cleanup would need removeListener API
     };
   }, []);
 
@@ -108,6 +116,15 @@ export default function App() {
       return;
     }
 
+    // Validate port number for TX and bidirectional modes
+    if (mode === 'tx' || mode === 'bidirectional') {
+      const portNum = parseInt(port);
+      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+        setStatus({ type: 'error', message: 'Port must be between 1 and 65535' });
+        return;
+      }
+    }
+
     try {
       if (mode === 'tx') {
         const result = await window.electronAPI.startTxMode({
@@ -119,6 +136,32 @@ export default function App() {
           setIsActive(true);
           setStatus({ type: 'success', message: result.message });
         } else {
+          setStatus({ type: 'error', message: result.message });
+        }
+      } else if (mode === 'bidirectional') {
+        // Bidirectional mode - both TX and RX
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+
+        if (!audioContextRef.current) return;
+        const audioContext = audioContextRef.current;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyserRef.current = analyser;
+        source.connect(analyser);
+
+        const result = await window.electronAPI.startBidirectionalMode({
+          port: parseInt(port),
+          password,
+        });
+        
+        if (result.success) {
+          setIsActive(true);
+          setStatus({ type: 'success', message: result.message });
+          startAudioProcessingBidirectional();
+        } else {
+          stream.getTracks().forEach(track => track.stop());
           setStatus({ type: 'error', message: result.message });
         }
       } else {
@@ -155,6 +198,11 @@ export default function App() {
     try {
       if (mode === 'tx') {
         await window.electronAPI.stopTxMode();
+      } else if (mode === 'bidirectional') {
+        await window.electronAPI.stopBidirectionalMode();
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        }
       } else {
         await window.electronAPI.stopRxMode();
         if (mediaStreamRef.current) {
@@ -169,6 +217,30 @@ export default function App() {
     }
   };
 
+  const startAudioProcessingBidirectional = () => {
+    if (!analyserRef.current) return;
+
+    const bufferLength = analyserRef.current.fftSize;
+    const dataArray = new Float32Array(bufferLength);
+
+    const process = () => {
+      if (!isActive || !analyserRef.current || isProcessingRef.current) return;
+
+      isProcessingRef.current = true;
+      analyserRef.current.getFloatTimeDomainData(dataArray);
+      
+      // Process audio samples for bidirectional mode
+      window.electronAPI.processAudioBidirectional(Array.from(dataArray))
+        .finally(() => {
+          isProcessingRef.current = false;
+        });
+
+      setTimeout(process, 100);
+    };
+
+    process();
+  };
+
   const startAudioProcessing = () => {
     if (!analyserRef.current) return;
 
@@ -176,12 +248,16 @@ export default function App() {
     const dataArray = new Float32Array(bufferLength);
 
     const process = () => {
-      if (!isActive || !analyserRef.current) return;
+      if (!isActive || !analyserRef.current || isProcessingRef.current) return;
 
+      isProcessingRef.current = true;
       analyserRef.current.getFloatTimeDomainData(dataArray);
       
       // Process audio samples
-      window.electronAPI.processAudio(Array.from(dataArray));
+      window.electronAPI.processAudio(Array.from(dataArray))
+        .finally(() => {
+          isProcessingRef.current = false;
+        });
 
       setTimeout(process, 100);
     };
@@ -200,7 +276,7 @@ export default function App() {
         </Box>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Software Defined Modem with AES-256 encryption, ACKs, and VOIP support
+          Software Defined Modem with AES-256 encryption, ACKs, and 2-way TCP support
         </Typography>
 
         {status && (
@@ -223,11 +299,15 @@ export default function App() {
             >
               <ToggleButton value="tx">
                 <Send sx={{ mr: 1 }} />
-                TX Mode (Transmit)
+                TX
               </ToggleButton>
               <ToggleButton value="rx">
                 <RadioButtonChecked sx={{ mr: 1 }} />
-                RX Mode (Receive)
+                RX
+              </ToggleButton>
+              <ToggleButton value="bidirectional">
+                <SwapHoriz sx={{ mr: 1 }} />
+                2-Way
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
@@ -242,7 +322,7 @@ export default function App() {
             required
           />
 
-          {mode === 'tx' && (
+          {(mode === 'tx' || mode === 'bidirectional') && (
             <TextField
               label="SOCKS5 Port"
               type="number"

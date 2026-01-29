@@ -1,11 +1,12 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import { SOCKS5Proxy, ReliableTransport, FSKModulator } from 'sdm-tcp-core';
+import { SOCKS5Proxy, ReliableTransport, FSKModulator, BidirectionalModem } from 'sdm-tcp-core';
 
 let mainWindow: BrowserWindow | null = null;
 let proxy: SOCKS5Proxy | null = null;
 let transport: ReliableTransport | null = null;
 let modulator: FSKModulator | null = null;
+let bidirectionalModem: BidirectionalModem | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -142,6 +143,60 @@ ipcMain.handle('process-audio', async (event, samples: number[]) => {
       mainWindow?.webContents.send('play-audio', Array.from(ackSamples));
     });
 
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+// Bidirectional Mode Handlers
+ipcMain.handle('start-bidirectional-mode', async (event, config) => {
+  try {
+    const { port, password } = config;
+    
+    // Initialize bidirectional modem
+    bidirectionalModem = new BidirectionalModem(password, { port });
+
+    // Handle audio output
+    bidirectionalModem.on('audio-output', (samples: number[]) => {
+      mainWindow?.webContents.send('play-audio', samples);
+    });
+
+    // Handle received data
+    bidirectionalModem.on('data-received', (data: Buffer) => {
+      mainWindow?.webContents.send('data-received', data.toString('base64'));
+    });
+
+    await bidirectionalModem.start();
+    
+    return { 
+      success: true, 
+      message: `Bidirectional mode started. SOCKS5 proxy on port ${port}. Audio RX active.` 
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('stop-bidirectional-mode', async () => {
+  try {
+    if (bidirectionalModem) {
+      await bidirectionalModem.stop();
+      bidirectionalModem = null;
+    }
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('process-audio-bidirectional', async (event, samples: number[]) => {
+  try {
+    if (!bidirectionalModem) {
+      return { success: false, message: 'Not in bidirectional mode' };
+    }
+
+    await bidirectionalModem.processAudio(samples);
     return { success: true };
   } catch (error: any) {
     return { success: false, message: error.message };

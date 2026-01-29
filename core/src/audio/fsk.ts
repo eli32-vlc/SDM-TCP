@@ -3,6 +3,8 @@
  * Uses 1200 Hz for '0' and 2400 Hz for '1'
  */
 
+const AUDIO_AMPLITUDE = 0.8; // 80% amplitude to prevent clipping and distortion
+
 export class FSKModulator {
   private sampleRate: number;
   private bitRate: number;
@@ -52,7 +54,7 @@ export class FSKModulator {
 
       for (let i = 0; i < samplesInBit && sampleIndex < totalSamples; i++) {
         const t = sampleIndex / this.sampleRate;
-        samples[sampleIndex] = Math.sin(2 * Math.PI * freq * t) * 0.8; // 80% amplitude
+        samples[sampleIndex] = Math.sin(2 * Math.PI * freq * t) * AUDIO_AMPLITUDE;
         sampleIndex++;
       }
     }

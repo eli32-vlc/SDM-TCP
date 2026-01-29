@@ -19,8 +19,8 @@ export interface Packet {
  * Protocol handler for SDM-TCP packets
  */
 export class Protocol {
-  private static readonly HEADER_SIZE = 10; // type(1) + seq(4) + length(2) + checksum(4) = 11, but we'll use 10
-  private static readonly MAX_DATA_SIZE = 246; // 256 - HEADER_SIZE
+  private static readonly HEADER_SIZE = 11; // type(1) + seq(4) + length(2) + checksum(4)
+  private static readonly MAX_DATA_SIZE = 245; // 256 - HEADER_SIZE
   
   /**
    * Create a packet
@@ -46,15 +46,15 @@ export class Protocol {
    * Serialize packet to buffer
    */
   static serialize(packet: Packet): Buffer {
-    const buffer = Buffer.alloc(10 + packet.data.length);
+    const buffer = Buffer.alloc(11 + packet.data.length);
     
     buffer.writeUInt8(packet.type, 0);
     buffer.writeUInt32BE(packet.sequenceNumber, 1);
     buffer.writeUInt16BE(packet.data.length, 5);
-    buffer.writeUInt32BE(packet.checksum, 6);
+    buffer.writeUInt32BE(packet.checksum, 7);
     
     if (packet.data.length > 0) {
-      packet.data.copy(buffer, 10);
+      packet.data.copy(buffer, 11);
     }
     
     return buffer;
@@ -64,20 +64,20 @@ export class Protocol {
    * Deserialize buffer to packet
    */
   static deserialize(buffer: Buffer): Packet {
-    if (buffer.length < 10) {
+    if (buffer.length < 11) {
       throw new Error('Invalid packet: too short');
     }
 
     const type = buffer.readUInt8(0) as PacketType;
     const sequenceNumber = buffer.readUInt32BE(1);
     const dataLength = buffer.readUInt16BE(5);
-    const checksum = buffer.readUInt32BE(6);
+    const checksum = buffer.readUInt32BE(7);
     
-    if (buffer.length < 10 + dataLength) {
+    if (buffer.length < 11 + dataLength) {
       throw new Error('Invalid packet: data length mismatch');
     }
 
-    const data = buffer.subarray(10, 10 + dataLength);
+    const data = buffer.subarray(11, 11 + dataLength);
     
     const packet: Packet = {
       type,

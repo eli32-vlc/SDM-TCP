@@ -5,10 +5,27 @@ import crypto from 'crypto';
  */
 export class CryptoEngine {
   private key: Buffer;
+  private salt: Buffer;
   
-  constructor(password: string) {
+  constructor(password: string, salt?: Buffer) {
+    // Use provided salt or generate a random one
+    this.salt = salt || Buffer.from('sdm-tcp-default-salt'); // Default for backwards compatibility
     // Derive a 256-bit key from password using PBKDF2
-    this.key = crypto.pbkdf2Sync(password, 'sdm-tcp-salt', 100000, 32, 'sha256');
+    this.key = crypto.pbkdf2Sync(password, this.salt, 100000, 32, 'sha256');
+  }
+
+  /**
+   * Get the salt used for key derivation
+   */
+  getSalt(): Buffer {
+    return this.salt;
+  }
+
+  /**
+   * Generate a random salt for secure key derivation
+   */
+  static generateSalt(): Buffer {
+    return crypto.randomBytes(16);
   }
 
   /**
