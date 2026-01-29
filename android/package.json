@@ -1,0 +1,14 @@
+{
+  "name": "sdm-modem-android",
+  "version": "1.0.0",
+  "description": "Software Defined Modem - Android Application",
+  "main": "index.js",
+  "scripts": {
+    "android": "react-native run-android",
+    "start": "react-native start"
+  },
+  "keywords": ["modem", "audio", "android"],
+  "author": "",
+  "license": "MIT",
+  "note": "This is a placeholder. Full React Native setup would be required for Android builds."
+}

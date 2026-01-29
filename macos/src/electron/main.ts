@@ -1,0 +1,204 @@
+import { app, BrowserWindow, ipcMain } from 'electron';
+import path from 'path';
+import { SOCKS5Proxy, ReliableTransport, FSKModulator, BidirectionalModem } from 'sdm-tcp-core';
+
+let mainWindow: BrowserWindow | null = null;
+let proxy: SOCKS5Proxy | null = null;
+let transport: ReliableTransport | null = null;
+let modulator: FSKModulator | null = null;
+let bidirectionalModem: BidirectionalModem | null = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (mainWindow === null) {
+    createWindow();
+  }
+});
+
+// IPC Handlers
+ipcMain.handle('start-tx-mode', async (event, config) => {
+  try {
+    const { port, password } = config;
+    
+    // Initialize components
+    modulator = new FSKModulator();
+    transport = new ReliableTransport(password);
+    proxy = new SOCKS5Proxy({ port });
+
+    // Handle proxy requests
+    proxy.on('request', async (req: any) => {
+      try {
+        // Forward data through audio modem
+        const data = Buffer.from(JSON.stringify({
+          address: req.address,
+          port: req.port,
+        }));
+
+        // Send via transport
+        await transport!.sendData(data, async (packet: Buffer) => {
+          // Modulate and play audio
+          const samples = modulator!.modulate(packet);
+          mainWindow?.webContents.send('play-audio', Array.from(samples));
+        });
+
+        req.reply(true);
+      } catch (err) {
+        console.error('TX error:', err);
+        req.reply(false);
+      }
+    });
+
+    await proxy.start();
+    return { success: true, message: `SOCKS5 proxy started on port ${port}` };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('stop-tx-mode', async () => {
+  try {
+    if (proxy) {
+      await proxy.stop();
+      proxy = null;
+    }
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('start-rx-mode', async (event, config) => {
+  try {
+    const { password } = config;
+    
+    modulator = new FSKModulator();
+    transport = new ReliableTransport(password);
+
+    // Set up receive callback
+    transport.onReceive((data: Buffer) => {
+      // Forward decrypted data
+      mainWindow?.webContents.send('data-received', data.toString('base64'));
+    });
+
+    return { success: true, message: 'RX mode started' };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('stop-rx-mode', async () => {
+  try {
+    transport = null;
+    modulator = null;
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('process-audio', async (event, samples: number[]) => {
+  try {
+    if (!modulator || !transport) {
+      return { success: false, message: 'Not in RX mode' };
+    }
+
+    // Demodulate audio
+    const audioData = new Float32Array(samples);
+    const packet = modulator.demodulate(audioData);
+
+    // Handle with transport layer
+    transport.handleReceivedPacket(packet, async (ackPacket: Buffer) => {
+      // Send ACK via audio
+      const ackSamples = modulator!.modulate(ackPacket);
+      mainWindow?.webContents.send('play-audio', Array.from(ackSamples));
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+// Bidirectional Mode Handlers
+ipcMain.handle('start-bidirectional-mode', async (event, config) => {
+  try {
+    const { port, password } = config;
+    
+    // Initialize bidirectional modem
+    bidirectionalModem = new BidirectionalModem(password, { port });
+
+    // Handle audio output
+    bidirectionalModem.on('audio-output', (samples: number[]) => {
+      mainWindow?.webContents.send('play-audio', samples);
+    });
+
+    // Handle received data
+    bidirectionalModem.on('data-received', (data: Buffer) => {
+      mainWindow?.webContents.send('data-received', data.toString('base64'));
+    });
+
+    await bidirectionalModem.start();
+    
+    return { 
+      success: true, 
+      message: `Bidirectional mode started. SOCKS5 proxy on port ${port}. Audio RX active.` 
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('stop-bidirectional-mode', async () => {
+  try {
+    if (bidirectionalModem) {
+      await bidirectionalModem.stop();
+      bidirectionalModem = null;
+    }
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('process-audio-bidirectional', async (event, samples: number[]) => {
+  try {
+    if (!bidirectionalModem) {
+      return { success: false, message: 'Not in bidirectional mode' };
+    }
+
+    await bidirectionalModem.processAudio(samples);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+});
