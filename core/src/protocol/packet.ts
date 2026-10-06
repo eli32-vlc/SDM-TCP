@@ -20,7 +20,7 @@ export interface Packet {
  */
 export class Protocol {
   private static readonly HEADER_SIZE = 11; // type(1) + seq(4) + length(2) + checksum(4)
-  private static readonly MAX_DATA_SIZE = 245; // 256 - HEADER_SIZE
+  public static readonly MAX_DATA_SIZE = 245; // 256 - HEADER_SIZE
   
   /**
    * Create a packet
@@ -115,13 +115,13 @@ export class Protocol {
   /**
    * Split data into packets
    */
-  static splitData(data: Buffer, startSeq: number = 0): Packet[] {
+  static splitData(data: Buffer, startSeq: number = 0, maxChunkSize: number = this.MAX_DATA_SIZE): Packet[] {
     const packets: Packet[] = [];
     let offset = 0;
     let seq = startSeq;
 
     while (offset < data.length) {
-      const chunkSize = Math.min(this.MAX_DATA_SIZE, data.length - offset);
+      const chunkSize = Math.min(maxChunkSize, data.length - offset);
       const chunk = data.subarray(offset, offset + chunkSize);
       packets.push(this.createPacket(PacketType.DATA, seq++, chunk));
       offset += chunkSize;

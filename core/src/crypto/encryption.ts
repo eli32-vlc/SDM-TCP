@@ -4,6 +4,9 @@ import crypto from 'crypto';
  * AES-256-GCM encryption and decryption utilities
  */
 export class CryptoEngine {
+  /** Per-packet overhead added by encrypt(): IV (12 bytes) + auth tag (16 bytes). */
+  static readonly ENCRYPTION_OVERHEAD = 28;
+
   private key: Buffer;
   private salt: Buffer;
   

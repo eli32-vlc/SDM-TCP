@@ -107,10 +107,18 @@ export class FSKModulator {
 
   /**
    * Goertzel algorithm for frequency detection
+   *
+   * Uses the generalized form with the target frequency directly in the
+   * recurrence coefficient (omega = 2*pi*f/fs) instead of quantizing to
+   * the nearest DFT bin. Bin quantization fails when the observation
+   * window (one bit period) is short: at 2400 bps with a 48 kHz sample
+   * rate there are only 20 samples per bit, so 1200 Hz falls between
+   * bins and cannot be resolved against 2400 Hz. The generalized form
+   * resolves any frequency at any window length, and reduces to the
+   * binned form whenever the frequency lands exactly on a bin.
    */
   private goertzel(samples: Float32Array, targetFreq: number): number {
-    const k = Math.round((samples.length * targetFreq) / this.sampleRate);
-    const omega = (2 * Math.PI * k) / samples.length;
+    const omega = (2 * Math.PI * targetFreq) / this.sampleRate;
     const coeff = 2 * Math.cos(omega);
 
     let s1 = 0;

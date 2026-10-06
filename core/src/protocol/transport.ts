@@ -18,6 +18,7 @@ export class ReliableTransport {
   private pendingAcks: Map<number, { packet: Packet; retries: number; timestamp: number }>;
   private receivedSeqs: Set<number>;
   private maxReceivedSeqs: number = 1000; // Limit memory usage
+  private pendingMessage: Buffer[] = []; // Plaintext chunks of the message being reassembled
   private onPacketReceived?: (data: Buffer) => void;
 
   constructor(password: string, options: ReliableTransportOptions = {}) {
@@ -33,12 +34,20 @@ export class ReliableTransport {
    * Send data reliably
    */
   async sendData(data: Buffer, onTransmit: (packet: Buffer) => Promise<void>): Promise<void> {
-    // Encrypt data
-    const encrypted = this.crypto.encrypt(data);
-    
-    // Split into packets
-    const packets = Protocol.splitData(encrypted);
-    
+    // Split the plaintext into packets first, then encrypt each packet
+    // independently. Every packet then carries its own AES-256-GCM IV
+    // and authentication tag, so the receiver can authenticate and
+    // decrypt each packet on its own (and retransmit a single corrupted
+    // packet without invalidating the rest of the message).
+    const maxPlaintextSize = Protocol.MAX_DATA_SIZE - CryptoEngine.ENCRYPTION_OVERHEAD;
+    const packets = Protocol.splitData(data, 0, maxPlaintextSize).map(p =>
+      Protocol.createPacket(PacketType.DATA, p.sequenceNumber, this.crypto.encrypt(p.data))
+    );
+
+    // Mark the end of the message so the receiver knows when the full
+    // payload has arrived and can deliver it via onReceive().
+    packets.push(Protocol.createPacket(PacketType.FIN, packets.length));
+
     // Send packets with sliding window
     for (let i = 0; i < packets.length; i += this.windowSize) {
       const window = packets.slice(i, i + this.windowSize);
@@ -108,37 +117,47 @@ export class ReliableTransport {
         // Remove from pending
         this.pendingAcks.delete(packet.sequenceNumber);
       } else if (packet.type === PacketType.DATA) {
-        // Send ACK
-        const ack = Protocol.createPacket(PacketType.ACK, packet.sequenceNumber);
-        const serialized = Protocol.serialize(ack);
-        onTransmit(serialized).catch(err => console.error('Failed to send ACK:', err));
-        
-        // Check if already received
+        // Check if already received; ACK anyway so the sender can
+        // advance its window.
         if (this.receivedSeqs.has(packet.sequenceNumber)) {
+          this.sendPacket(PacketType.ACK, packet.sequenceNumber, onTransmit);
           return;
         }
-        
-        this.receivedSeqs.add(packet.sequenceNumber);
-        
-        // Limit memory usage by removing old sequence numbers
-        if (this.receivedSeqs.size > this.maxReceivedSeqs) {
-          const oldestSeq = Math.min(...Array.from(this.receivedSeqs));
-          this.receivedSeqs.delete(oldestSeq);
-        }
-        
-        // Decrypt and forward
+
+        // Each packet carries its own encrypted payload: authenticate and
+        // decrypt it independently, then buffer the plaintext. The
+        // complete message is delivered when the FIN packet arrives.
         if (this.onPacketReceived) {
           try {
             const decrypted = this.crypto.decrypt(packet.data);
-            this.onPacketReceived(decrypted);
+            this.receivedSeqs.add(packet.sequenceNumber);
+            this.pendingMessage.push(decrypted);
+            this.sendPacket(PacketType.ACK, packet.sequenceNumber, onTransmit);
+
+            // Limit memory usage by removing old sequence numbers
+            if (this.receivedSeqs.size > this.maxReceivedSeqs) {
+              const oldestSeq = Math.min(...Array.from(this.receivedSeqs));
+              this.receivedSeqs.delete(oldestSeq);
+            }
           } catch (err) {
             console.error('Decryption failed:', err);
-            // Send NACK
-            const nack = Protocol.createPacket(PacketType.NACK, packet.sequenceNumber);
-            const serializedNack = Protocol.serialize(nack);
-            onTransmit(serializedNack).catch(e => console.error('Failed to send NACK:', e));
+            // Not marked as received, and NACK (instead of ACK) so the
+            // sender retransmits this packet.
+            this.sendPacket(PacketType.NACK, packet.sequenceNumber, onTransmit);
           }
+        } else {
+          this.receivedSeqs.add(packet.sequenceNumber);
+          this.sendPacket(PacketType.ACK, packet.sequenceNumber, onTransmit);
         }
+      } else if (packet.type === PacketType.FIN) {
+        // End of message: the reassembled plaintext is complete.
+        this.sendPacket(PacketType.ACK, packet.sequenceNumber, onTransmit);
+        if (this.onPacketReceived) {
+          this.onPacketReceived(Buffer.concat(this.pendingMessage));
+        }
+        this.pendingMessage = [];
+        // Sequence numbers restart with each message.
+        this.receivedSeqs.clear();
       } else if (packet.type === PacketType.NACK) {
         // Retransmit immediately
         const pending = this.pendingAcks.get(packet.sequenceNumber);
@@ -158,5 +177,13 @@ export class ReliableTransport {
    */
   onReceive(callback: (data: Buffer) => void): void {
     this.onPacketReceived = callback;
+  }
+
+  /**
+   * Serialize and send a control packet (ACK/NACK)
+   */
+  private sendPacket(type: PacketType, sequenceNumber: number, onTransmit: (packet: Buffer) => Promise<void>): void {
+    const serialized = Protocol.serialize(Protocol.createPacket(type, sequenceNumber));
+    onTransmit(serialized).catch(err => console.error(`Failed to send ${PacketType[type]}:`, err));
   }
 }

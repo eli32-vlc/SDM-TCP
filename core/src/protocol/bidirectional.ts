@@ -4,6 +4,15 @@ import { SOCKS5Proxy, SOCKS5ProxyOptions } from '../socks5/proxy';
 import { EventEmitter } from 'events';
 
 /**
+ * Options for the BidirectionalModem
+ */
+export interface BidirectionalModemOptions {
+  sampleRate?: number;
+  bitRate?: number;
+  windowSize?: number;
+}
+
+/**
  * Bidirectional (Full-Duplex) modem mode
  * Allows both transmitting and receiving simultaneously
  */
@@ -13,10 +22,10 @@ export class BidirectionalModem extends EventEmitter {
   private proxy: SOCKS5Proxy | null = null;
   private isActive: boolean = false;
 
-  constructor(password: string, proxyOptions?: SOCKS5ProxyOptions) {
+  constructor(password: string, proxyOptions?: SOCKS5ProxyOptions, options?: BidirectionalModemOptions) {
     super();
-    this.transport = new ReliableTransport(password);
-    this.modulator = new FSKModulator();
+    this.transport = new ReliableTransport(password, { windowSize: options?.windowSize });
+    this.modulator = new FSKModulator(options?.sampleRate ?? 48000, options?.bitRate ?? 1200);
     
     if (proxyOptions) {
       this.proxy = new SOCKS5Proxy(proxyOptions);
